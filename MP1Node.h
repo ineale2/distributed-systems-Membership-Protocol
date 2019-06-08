@@ -21,6 +21,8 @@
 #define TREMOVE 20
 #define TFAIL 5
 
+#define M 1 //Number of processes to randomly ping
+#define K 1 //Number of processes to select for indirect ping
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
@@ -31,6 +33,10 @@
 enum MsgTypes{
     JOINREQ,
     JOINREP,
+    PING,
+    ACK,
+    IPING,
+    IACK,
     DUMMYLASTMSGTYPE
 };
 
@@ -48,12 +54,19 @@ typedef struct MessageHdr {
  *
  * DESCRIPTION: Class implementing Membership protocol functionalities for failure detection
  */
+class pingListEntry{
+public:
+	Address addr;
+	long pingTime;
+};
+
 class MP1Node {
 private:
 	EmulNet *emulNet;
 	Log *log;
 	Params *par;
 	Member *memberNode;
+	vector<pingListEntry> pingList;	
 	char NULLADDR[6];
 
 public:

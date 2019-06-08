@@ -163,6 +163,8 @@ int MP1Node::finishUpThisNode(){
    /*
     * Your code goes here
     */
+
+	return 0;
 }
 
 /**
@@ -215,9 +217,105 @@ void MP1Node::checkMessages() {
  * DESCRIPTION: Message handler for different message types
  */
 bool MP1Node::recvCallBack(void *env, char *data, int size ) {
-	/*
-	 * Your code goes here
-	 */
+
+		
+	Address addr;
+	int id;
+	short port; 
+	long hb;
+	// Get the message type, and switch on the message type
+	MessageHdr* m = (MessageHdr*)data;
+	MessageHdr* mOut;
+	switch(m->msgType){
+		case JOINREQ:
+		{
+			cout << "JOINREQ recieved" << endl;
+			// Get address and heartbeat of sender from message
+			memcpy(&addr, (char*)(m+1), 					sizeof(addr));
+			memcpy(&hb,   (char*)(m+1) + 1 + sizeof(addr),  sizeof(long));
+			// Get id and port from address (address = id:port)
+			id = *((int*)addr.addr);
+			port = *( (short*)(&addr.addr[4]) );
+			cout << "JOINREQ from id = " << id << " and port = " << port << endl;
+			// Update membership list of introducer with this new node
+			MemberListEntry newNode(id, port, hb, par->getcurrtime()); 
+			// The member list will be indexed by ID
+			memberNode->memberList.push_back(newNode);	
+
+			int numNodes = memberNode->memberList.size();
+			// Create JOINREP message
+			size_t msgSize = sizeof(MessageHdr) + sizeof(long)*4*numNodes;
+			// In the message, include list of known nodes
+			mOut = (MessageHdr*)malloc(msgSize);
+			mOut->msgType = JOINREP;
+			auto it = memberNode->memberList.begin();
+			long* nodeData  = (long*)(mOut + 1);
+			cout << "Introducer sending info for nodes "; 
+			for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
+				nodeData[c++] = (long)it->id;
+				nodeData[c++] = (long)it->port;
+				nodeData[c++] = it->heartbeat;
+				nodeData[c++] = it->timestamp;
+				cout << it->id << " ";
+			}
+			cout << endl;
+			// send the JOINREP message to the node that send JOINREQ
+			emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
+			
+			//clean up memory
+			free(mOut);
+
+			break;
+		}	
+		case JOINREP:
+		{
+			cout << "JOINTREP recieved" << endl;
+			long* nodeData = (long*)(m + 1);
+			int numNodes = (size - sizeof(MessageHdr))/(4*sizeof(long));
+			cout << "numNodes = " << numNodes << endl;
+			int id;
+			short port;
+			long hb, ts;
+			// Create a vector from the message recieved from introducer
+			cout << "got info for nodes ";
+			for(int i = 0; i < numNodes*4; ){
+				id   = (int)nodeData[i++];
+				port = (short)nodeData[i++];
+				hb   = nodeData[i++];
+				ts   = nodeData[i++];
+				cout << id << " ";
+				MemberListEntry mle(id, port, hb, ts);
+				memberNode->memberList.push_back(mle);
+			}
+			cout << endl;
+			break;
+		}
+		case PING:
+		{
+			cout << "PING recieved" << endl;
+			break;
+		}
+		case ACK:
+		{
+			cout << "ACK recieved" << endl;
+			break;
+		}
+		case IPING:
+		{
+			cout << "INDIRECT PING recieved" << endl;
+			break;
+		}
+		case IACK:
+		{
+			cout << "INDIRECT ACK recieved" << endl;
+			break;
+		}
+		default:
+			cout << "INVALID MESSAGE" << endl;
+			break;
+	}
+	
+	return true;	
 }
 
 /**
@@ -228,11 +326,49 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
  * 				Propagate your membership list
  */
 void MP1Node::nodeLoopOps() {
+/*
+	int currTime = par->getcurrtime();
+	MessageHdr* mOut;
+	// Check list of processes that have been sent a PING
+	// If the process has timed out, send IPING to K processes and refresh the timer 
+	
 
-	/*
-	 * Your code goes here
-	 */
+	// Construct PING message
+	int numNodes = memberNode->memberList.size();
+	size_t msgSize = sizeof(MessageHdr) + sizeof(long)*4*numNodes;
+	// In the message, include list of known nodes
+	mOut = (MessageHdr*)malloc(msgSize);
+	mOut->msgType = PING;
+	auto it = memberNode->memberList.begin();
+	long* nodeData  = (long*)(mOut + 1);
+	for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
+		nodeData[c++] = (long)it->id;
+		nodeData[c++] = (long)it->port;
+		nodeData[c++] = it->heartbeat;
+		nodeData[c++] = it->timestamp;
+	}
+	// Include process list on PING message
+	// Chose M random processes to send a PING
+	pingListEntry ple;
+	Address addr;
+	int id;
+	short port;
+	for(int i = 0; i < M; i++){
+		int p = rand() % memberNode->memberList.size();
+		port = memberNode->memberList[p].port;
+		id   = memberNode->memberList[p].id;
+		memcpy(&addr.addr[0], &id,   sizeof(int));
+		memcpy(&addr.addr[4], &port, sizeof(short));
+		//TODO: Ping only if the process is not already in the ping list
+		emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
+		// Add processes to PING list
+		ple.addr = addr;
+		ple.pingTime = currTime;
+		pingList.push_back(ple);
+	}
 
+	//clean up memory
+	free(mOut);*/
     return;
 }
 
