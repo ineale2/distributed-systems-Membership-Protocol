@@ -23,6 +23,7 @@
 
 #define M 1 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
+#define NOT_PINGED -1
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
@@ -54,11 +55,6 @@ typedef struct MessageHdr {
  *
  * DESCRIPTION: Class implementing Membership protocol functionalities for failure detection
  */
-class pingListEntry{
-public:
-	Address addr;
-	long pingTime;
-};
 
 class MP1Node {
 private:
@@ -66,7 +62,7 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
-	vector<pingListEntry> pingList;	
+	map<Address, long> pingMap;
 	char NULLADDR[6];
 
 public:
