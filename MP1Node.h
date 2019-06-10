@@ -65,6 +65,15 @@ private:
 	map<string, long> pingMap;
 	char NULLADDR[6];
 
+	void 	sendACK(Address addr);
+	char* 	createJOINREP(size_t* msgSize);
+	char* 	createPING(void);
+
+	Address processJOINREQ(MessageHdr* mIn);
+	void 	processJOINREP(MessageHdr* mIn, int size);
+	Address processPING(MessageHdr* mIn);
+	void 	processACK(MessageHdr* mIn);
+
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {

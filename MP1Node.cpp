@@ -1,6 +1,6 @@
 /**********************************
  * FILE NAME: MP1Node.cpp
- *
+ * 
  * DESCRIPTION: Membership protocol run by this Node.
  * 				Definition of MP1Node class functions.
  **********************************/
@@ -211,6 +211,125 @@ void MP1Node::checkMessages() {
     return;
 }
 
+Address MP1Node::processJOINREQ(MessageHdr* mIn){
+	Address addr;
+	int id;
+	short port; 
+	long hb;
+
+	// Get address and heartbeat of sender from message
+	memcpy(&addr, (char*)(mIn+1), 					sizeof(addr));
+	memcpy(&hb,   (char*)(mIn+1) + 1 + sizeof(addr),  sizeof(long));
+	// Get id and port from address (address = id:port)
+	id = *((int*)addr.addr);
+	port = *( (short*)(&addr.addr[4]) );
+	cout << "JOINREQ from id = " << id << " and port = " << port << endl;
+	// Update membership list of introducer with this new node
+	MemberListEntry newNode(id, port, hb, par->getcurrtime()); 
+	// The member list will be indexed by ID
+	memberNode->memberList.push_back(newNode);	
+
+	return addr;
+}
+
+char* MP1Node::createJOINREP(size_t* msgSize){
+
+	int numNodes = memberNode->memberList.size();
+	*msgSize = sizeof(MessageHdr) + sizeof(long)*4*numNodes;
+	// In the message, include list of known nodes
+	MessageHdr* mOut = (MessageHdr*)malloc(*msgSize);
+	mOut->msgType = JOINREP;
+	auto it = memberNode->memberList.begin();
+	long* nodeData  = (long*)(mOut + 1);
+	cout << "Introducer sending info for nodes "; 
+	for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
+		nodeData[c++] = (long)it->id;
+		nodeData[c++] = (long)it->port;
+		nodeData[c++] = it->heartbeat;
+		nodeData[c++] = it->timestamp;
+		cout << it->id << " ";
+	}
+	cout << endl;
+	return (char*)mOut;
+
+}
+
+void MP1Node::processJOINREP(MessageHdr* mIn, int size){
+
+	long* nodeData = (long*)(mIn + 1);
+	int numNodes = (size - sizeof(MessageHdr))/(4*sizeof(long));
+	cout << "numNodes = " << numNodes << endl;
+	int id;
+	short port;
+	long hb, ts;
+	// Create a vector from the message recieved from introducer
+	cout << "got info for nodes ";
+	for(int i = 0; i < numNodes*4; ){
+		id   = (int)nodeData[i++];
+		port = (short)nodeData[i++];
+		hb   = nodeData[i++];
+		ts   = nodeData[i++];
+		cout << id << " ";
+		MemberListEntry mle(id, port, hb, ts);
+		memberNode->memberList.push_back(mle);
+	}
+	cout << endl;
+}
+
+Address MP1Node::processPING(MessageHdr* mIn){
+	Address addr;
+	memcpy(&addr, (char*)(mIn+1), sizeof(addr));
+	// Update membership list based on message in data
+	//TODO: Update membership list
+
+	return addr;
+}
+
+void MP1Node::sendACK(Address addr){
+	
+	MessageHdr* mOut;	
+	// Create an ack message and send it to the address passed in
+	size_t msgSize = sizeof(MessageHdr) + sizeof(Address);
+	mOut = (MessageHdr*)malloc(msgSize);
+	mOut->msgType = ACK;
+	memcpy((char *)(mOut+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
+	
+	//Send the message
+	emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
+	
+	free(mOut);
+}
+
+void MP1Node::processACK(MessageHdr* mIn){
+	Address addr;
+	//Grab address
+	memcpy(&addr, (char*)(mIn+1), sizeof(addr));
+	//Remove the process from the pingList
+	string strAddr(addr.addr);
+	pingMap[strAddr] = NOT_PINGED;
+
+}
+
+char* MP1Node::createPING(void){
+
+	MessageHdr* mOut;
+	int numNodes = memberNode->memberList.size();
+	size_t msgSize = sizeof(MessageHdr) + sizeof(Address) + sizeof(long)*4*numNodes;
+	// In the message, include list of known nodes
+	mOut = (MessageHdr*)malloc(msgSize);
+	mOut->msgType = PING;
+    memcpy((char *)(mOut+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
+	auto it = memberNode->memberList.begin();
+	long* nodeData  = (long*)((char*)(mOut + 1) + sizeof(Address));
+	for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
+		nodeData[c++] = (long)it->id;
+		nodeData[c++] = (long)it->port;
+		nodeData[c++] = it->heartbeat;
+		nodeData[c++] = it->timestamp;
+	}
+
+	return (char*)mOut;
+}
 /**
  * FUNCTION NAME: recvCallBack
  *
@@ -220,47 +339,24 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 
 		
 	Address addr;
-	int id;
-	short port; 
-	long hb;
+	size_t msgSize;
+
 	// Get the message type, and switch on the message type
-	MessageHdr* m = (MessageHdr*)data;
-	MessageHdr* mOut;
-	switch(m->msgType){
+	MessageHdr* mIn = (MessageHdr*)data;
+	char* mOut;
+	switch(mIn->msgType){
 		case JOINREQ:
 		{
 			cout << "JOINREQ recieved" << endl;
-			// Get address and heartbeat of sender from message
-			memcpy(&addr, (char*)(m+1), 					sizeof(addr));
-			memcpy(&hb,   (char*)(m+1) + 1 + sizeof(addr),  sizeof(long));
-			// Get id and port from address (address = id:port)
-			id = *((int*)addr.addr);
-			port = *( (short*)(&addr.addr[4]) );
-			cout << "JOINREQ from id = " << id << " and port = " << port << endl;
-			// Update membership list of introducer with this new node
-			MemberListEntry newNode(id, port, hb, par->getcurrtime()); 
-			// The member list will be indexed by ID
-			memberNode->memberList.push_back(newNode);	
+		
+			// Add requesting node to membership list, then send full list
+			addr = processJOINREQ(mIn);
 
-			int numNodes = memberNode->memberList.size();
-			// Create JOINREP message
-			size_t msgSize = sizeof(MessageHdr) + sizeof(long)*4*numNodes;
-			// In the message, include list of known nodes
-			mOut = (MessageHdr*)malloc(msgSize);
-			mOut->msgType = JOINREP;
-			auto it = memberNode->memberList.begin();
-			long* nodeData  = (long*)(mOut + 1);
-			cout << "Introducer sending info for nodes "; 
-			for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
-				nodeData[c++] = (long)it->id;
-				nodeData[c++] = (long)it->port;
-				nodeData[c++] = it->heartbeat;
-				nodeData[c++] = it->timestamp;
-				cout << it->id << " ";
-			}
-			cout << endl;
-			// send the JOINREP message to the node that send JOINREQ
-			emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
+			// Create JOINREP message, msgSize is modified with pass by reference
+			mOut = createJOINREP(&msgSize);
+
+			// Reply with the JOINREP message
+			emulNet->ENsend(&memberNode->addr, &addr, mOut, msgSize);
 			
 			//clean up memory
 			free(mOut);
@@ -270,47 +366,26 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 		case JOINREP:
 		{
 			cout << "JOINTREP recieved" << endl;
-			long* nodeData = (long*)(m + 1);
-			int numNodes = (size - sizeof(MessageHdr))/(4*sizeof(long));
-			cout << "numNodes = " << numNodes << endl;
-			int id;
-			short port;
-			long hb, ts;
-			// Create a vector from the message recieved from introducer
-			cout << "got info for nodes ";
-			for(int i = 0; i < numNodes*4; ){
-				id   = (int)nodeData[i++];
-				port = (short)nodeData[i++];
-				hb   = nodeData[i++];
-				ts   = nodeData[i++];
-				cout << id << " ";
-				MemberListEntry mle(id, port, hb, ts);
-				memberNode->memberList.push_back(mle);
-			}
-			cout << endl;
+			// Create membership list based on the vector in the JOINREP message
+			processJOINREP(mIn, size);
+
 			break;
 		}
 		case PING:
 		{
 			cout << "PING recieved" << endl;
-			memcpy(&addr, (char*)(m+1), sizeof(addr));
-			// Update membership list based on message in data
+			// Update this nodes membership list based on the ping message
+			addr = processPING(mIn);
 
 			// Send an ACK message back :: msgType:senderAddress
-			size_t msgSize = sizeof(MessageHdr) + sizeof(Address);
-			mOut = (MessageHdr*)malloc(msgSize);
-			mOut->msgType = ACK;
-			memcpy((char *)(mOut+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
-			free(mOut);
+			sendACK(addr);
 			break;
 		}
 		case ACK:
 		{
 			cout << "ACK recieved" << endl;
-			memcpy(&addr, (char*)(m+1), sizeof(addr));
-			//Remove the process from the pingList
-			string strAddr(addr.addr);
-			pingMap[strAddr] = NOT_PINGED;
+			// Remove the process from the ping map
+			processACK(mIn);
 			break;
 		}
 		case IPING:
@@ -340,7 +415,6 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
  */
 void MP1Node::nodeLoopOps() {
 	int currTime = par->getcurrtime();
-	MessageHdr* mOut;
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
 	map<string, long>::iterator itMap;
@@ -349,28 +423,16 @@ void MP1Node::nodeLoopOps() {
 			cout << "Process with addr " << itMap->first << " failed" << endl;
 		}	
 	}	
-
-	// Construct PING message :: msgType:senderAddress:nodeVectorData
-	int numNodes = memberNode->memberList.size();
-	size_t msgSize = sizeof(MessageHdr) + sizeof(Address) + sizeof(long)*4*numNodes;
-	// In the message, include list of known nodes
-	mOut = (MessageHdr*)malloc(msgSize);
-	mOut->msgType = PING;
-    memcpy((char *)(mOut+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
-	auto it = memberNode->memberList.begin();
-	long* nodeData  = (long*)((char*)(mOut + 1) + sizeof(Address));
-	for(int c = 0 ; it !=memberNode->memberList.end() ; it++){
-		nodeData[c++] = (long)it->id;
-		nodeData[c++] = (long)it->port;
-		nodeData[c++] = it->heartbeat;
-		nodeData[c++] = it->timestamp;
-	}
-	// Include process list on PING message
+	
+	// Construct PING message, containing all nodes currently known to this process
+	char* mOut = createPING();
 	// Chose M random processes to send a PING
 	Address addr;
 	int id;
 	short port;
 	//TODO: Cannot ping yourself 
+	//TODO: ENsend returns 0 if message dropped, then should resend msg
+
 	for(int i = 0; i < M; i++){
 		int p = rand() % memberNode->memberList.size();
 		port = memberNode->memberList[p].port;
