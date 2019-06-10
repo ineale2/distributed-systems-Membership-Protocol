@@ -62,7 +62,7 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
-	map<Address, long> pingMap;
+	map<string, long> pingMap;
 	char NULLADDR[6];
 
 public:

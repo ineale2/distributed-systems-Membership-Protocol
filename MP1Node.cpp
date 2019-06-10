@@ -309,7 +309,8 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 			cout << "ACK recieved" << endl;
 			memcpy(&addr, (char*)(m+1), sizeof(addr));
 			//Remove the process from the pingList
-			pingMap[addr] = NOT_PINGED;
+			string strAddr(addr.addr);
+			pingMap[strAddr] = NOT_PINGED;
 			break;
 		}
 		case IPING:
@@ -342,10 +343,10 @@ void MP1Node::nodeLoopOps() {
 	MessageHdr* mOut;
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
-	map<Address, long>::iterator itMap;
-	for(itMap = pingMap.begin(); itMap != pingMap.end(); it++){
-		if(itMap->second != NOT_PINGED && itMap->second - currTime < TFAIL){
-			cout << "Process with addr " << itMap->first.addr << " failed" << endl;
+	map<string, long>::iterator itMap;
+	for(itMap = pingMap.begin(); itMap != pingMap.end(); itMap++){
+		if(itMap->second != NOT_PINGED && currTime - itMap->second  > TFAIL){
+			cout << "Process with addr " << itMap->first << " failed" << endl;
 		}	
 	}	
 
@@ -366,21 +367,23 @@ void MP1Node::nodeLoopOps() {
 	}
 	// Include process list on PING message
 	// Chose M random processes to send a PING
-	pingListEntry ple;
 	Address addr;
 	int id;
 	short port;
+	//TODO: Cannot ping yourself 
 	for(int i = 0; i < M; i++){
 		int p = rand() % memberNode->memberList.size();
 		port = memberNode->memberList[p].port;
 		id   = memberNode->memberList[p].id;
 		memcpy(&addr.addr[0], &id,   sizeof(int));
 		memcpy(&addr.addr[4], &port, sizeof(short));
+
 		//TODO: Ping only if the process is not already in the ping list
 		emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
 		// Add processes to PING map
-		std::pair<Address, long> pme(addr, currTime); //ping Map Entry
+		std::pair<string, long> pme(addr.getAddress(), currTime); //ping Map Entry
 		pingMap.insert(pme);
+		cout << "Pinged process with address " << addr.getAddress() << endl;
 	}
 
 	//clean up memory
