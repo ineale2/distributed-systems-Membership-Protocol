@@ -229,6 +229,9 @@ Address MP1Node::processJOINREQ(MessageHdr* mIn){
 	// The member list will be indexed by ID
 	memberNode->memberList.push_back(newNode);	
 
+	// Write to grading log that a new process was added
+	log->logNodeAdd(&memberNode->addr, &addr);
+
 	return addr;
 }
 
@@ -262,6 +265,7 @@ void MP1Node::processJOINREP(MessageHdr* mIn, int size){
 	int id;
 	short port;
 	long hb, ts;
+	Address addr;
 	// Create a vector from the message recieved from introducer
 	cout << "got info for nodes ";
 	for(int i = 0; i < numNodes*4; ){
@@ -272,11 +276,18 @@ void MP1Node::processJOINREP(MessageHdr* mIn, int size){
 		cout << id << " ";
 		MemberListEntry mle(id, port, hb, ts);
 		memberNode->memberList.push_back(mle);
+	
+		// Create an Address so it can be added to the grading log
+		memcpy(&addr.addr[0], &id,   sizeof(int));
+		memcpy(&addr.addr[4], &port, sizeof(short));
+		log->logNodeAdd(&memberNode->addr, &addr);
 	}
+	// Mark yourself as in the group
+	memberNode->inGroup = true;
 	cout << endl;
 }
 
-Address MP1Node::processPING(MessageHdr* mIn){
+Address MP1Node::processPING(MessageHdr* mIn, int size){
 	Address addr;
 	memcpy(&addr, (char*)(mIn+1), sizeof(addr));
 	// Update membership list based on message in data
@@ -296,6 +307,7 @@ void MP1Node::sendACK(Address addr){
 	
 	//Send the message
 	emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
+	cout << memberNode->addr.getAddress() << ": sent ACK to process " << addr.getAddress() << endl;
 	
 	free(mOut);
 }
@@ -305,18 +317,18 @@ void MP1Node::processACK(MessageHdr* mIn){
 	//Grab address
 	memcpy(&addr, (char*)(mIn+1), sizeof(addr));
 	//Remove the process from the pingList
-	string strAddr(addr.addr);
-	pingMap[strAddr] = NOT_PINGED;
+	pingMap[addr.getAddress()] = NOT_PINGED;
+	cout << addr.getAddress() << endl;
 
 }
 
-char* MP1Node::createPING(void){
+char* MP1Node::createPING(size_t* msgSize){
 
 	MessageHdr* mOut;
 	int numNodes = memberNode->memberList.size();
-	size_t msgSize = sizeof(MessageHdr) + sizeof(Address) + sizeof(long)*4*numNodes;
+	*msgSize = sizeof(MessageHdr) + sizeof(Address) + sizeof(long)*4*numNodes;
 	// In the message, include list of known nodes
-	mOut = (MessageHdr*)malloc(msgSize);
+	mOut = (MessageHdr*)malloc(*msgSize);
 	mOut->msgType = PING;
     memcpy((char *)(mOut+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
 	auto it = memberNode->memberList.begin();
@@ -337,6 +349,7 @@ char* MP1Node::createPING(void){
  */
 bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 
+	int time = par->getcurrtime();
 		
 	Address addr;
 	size_t msgSize;
@@ -347,7 +360,7 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 	switch(mIn->msgType){
 		case JOINREQ:
 		{
-			cout << "JOINREQ recieved" << endl;
+			cout << "T = " << time << " :: " << memberNode->addr.getAddress() << ": JOINREQ recieved" << endl;
 		
 			// Add requesting node to membership list, then send full list
 			addr = processJOINREQ(mIn);
@@ -365,7 +378,7 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 		}	
 		case JOINREP:
 		{
-			cout << "JOINTREP recieved" << endl;
+			cout << "T = " << time << " :: "<< memberNode->addr.getAddress() << ": JOINTREP recieved" << endl;
 			// Create membership list based on the vector in the JOINREP message
 			processJOINREP(mIn, size);
 
@@ -373,9 +386,9 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 		}
 		case PING:
 		{
-			cout << "PING recieved" << endl;
+			cout << "T = " << time << " :: "<< memberNode->addr.getAddress() << ": PING recieved" << endl;
 			// Update this nodes membership list based on the ping message
-			addr = processPING(mIn);
+			addr = processPING(mIn, size);
 
 			// Send an ACK message back :: msgType:senderAddress
 			sendACK(addr);
@@ -383,23 +396,23 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 		}
 		case ACK:
 		{
-			cout << "ACK recieved" << endl;
+			cout << "T = " << time << " :: "<< memberNode->addr.getAddress() << ": ACK recieved from process ";
 			// Remove the process from the ping map
 			processACK(mIn);
 			break;
 		}
 		case IPING:
 		{
-			cout << "INDIRECT PING recieved" << endl;
+			cout << "T = " << time << " :: "<< memberNode->addr.getAddress() << ": INDIRECT PING recieved" << endl;
 			break;
 		}
 		case IACK:
 		{
-			cout << "INDIRECT ACK recieved" << endl;
+			cout << "T = " << time << " :: "<< memberNode->addr.getAddress() << ": INDIRECT ACK recieved" << endl;
 			break;
 		}
 		default:
-			cout << "INVALID MESSAGE" << endl;
+			cout << memberNode->addr.getAddress() << ": INVALID MESSAGE" << endl;
 			break;
 	}
 	
@@ -415,22 +428,24 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
  */
 void MP1Node::nodeLoopOps() {
 	int currTime = par->getcurrtime();
+	size_t msgSize;
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
 	map<string, long>::iterator itMap;
+	cout << "T = " << currTime << " :: PING MAP CHECK: " << memberNode->addr.getAddress() << endl;
 	for(itMap = pingMap.begin(); itMap != pingMap.end(); itMap++){
+		cout << "Process " << itMap->first << " pinged at time " << itMap->second << endl;
 		if(itMap->second != NOT_PINGED && currTime - itMap->second  > TFAIL){
-			cout << "Process with addr " << itMap->first << " failed" << endl;
+			cout << memberNode->addr.getAddress() << ": Process with addr " << itMap->first << " failed" << endl;
 		}	
 	}	
 	
 	// Construct PING message, containing all nodes currently known to this process
-	char* mOut = createPING();
+	char* mOut = createPING(&msgSize);
 	// Chose M random processes to send a PING
 	Address addr;
 	int id;
 	short port;
-	//TODO: Cannot ping yourself 
 	//TODO: ENsend returns 0 if message dropped, then should resend msg
 
 	for(int i = 0; i < M; i++){
@@ -439,13 +454,22 @@ void MP1Node::nodeLoopOps() {
 		id   = memberNode->memberList[p].id;
 		memcpy(&addr.addr[0], &id,   sizeof(int));
 		memcpy(&addr.addr[4], &port, sizeof(short));
-
-		//TODO: Ping only if the process is not already in the ping list
+		// Dont send PING to yourself
+		if(addr == memberNode->addr){
+			continue;
+		}
+		// Only PING if you are not waiting for a reply
+		/*
+		if(pingMap[addr.getAddress()] != NOT_PINGED){
+			continue;
+		}
+		*/
 		emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, msgSize);
 		// Add processes to PING map
-		std::pair<string, long> pme(addr.getAddress(), currTime); //ping Map Entry
-		pingMap.insert(pme);
-		cout << "Pinged process with address " << addr.getAddress() << endl;
+		//std::pair<string, long> pme(addr.getAddress(), currTime); //ping Map Entry
+		//pingMap.insert(pme);
+		pingMap[addr.getAddress()] = currTime;
+		cout << memberNode->addr.getAddress() << ": Pinged process with address " << addr.getAddress() << endl;
 	}
 
 	//clean up memory

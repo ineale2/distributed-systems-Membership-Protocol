@@ -67,11 +67,11 @@ private:
 
 	void 	sendACK(Address addr);
 	char* 	createJOINREP(size_t* msgSize);
-	char* 	createPING(void);
+	char* 	createPING(size_t* msgSize);
 
 	Address processJOINREQ(MessageHdr* mIn);
 	void 	processJOINREP(MessageHdr* mIn, int size);
-	Address processPING(MessageHdr* mIn);
+	Address processPING(MessageHdr* mIn, int size);
 	void 	processACK(MessageHdr* mIn);
 
 public:
