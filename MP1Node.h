@@ -20,6 +20,7 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
+#define DB_TIMEOUT 10
 
 
 // Message sizes
@@ -32,7 +33,7 @@
 #define K 1 //Number of processes to select for indirect ping
 #define NOT_PINGED -1
 
-#define DELTA_BUFF_SIZE 10
+#define DELTA_BUFF_SIZE 30
 #define NOT_ALIVE  0
 #define ALIVE  1
 /*
@@ -85,6 +86,7 @@ private:
 	deque<pair<string, dbTypes> > deltaBuff;	
 	deque<pair<string, dbTypes> >::iterator dbit;
 	char NULLADDR[6];
+	int dbTimer;
 
 	/* Private Methods */
 	Address readDeltaBuff(dbTypes*);

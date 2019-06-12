@@ -129,6 +129,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
         log->LOG(&memberNode->addr, "Starting up group...");
 #endif
         memberNode->inGroup = true;
+		memberMap[memberNode->addr.getAddress()] = ALIVE;
     }
     else {
         size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
@@ -274,6 +275,13 @@ void MP1Node::processJOINREP(MessageHdr* mIn, int size){
 	}
 	// Mark yourself as in the group
 	memberNode->inGroup = true;
+
+	// Init timer
+	dbTimer = 0;	
+
+	// Tell everyone you've joined!
+	writeDeltaBuff(memberNode->addr.getAddress(), JOINED);	
+	
 	cout << endl;
 }
 
@@ -502,6 +510,17 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
  * 				Propagate your membership list
  */
 void MP1Node::nodeLoopOps() {
+
+	// Pop stale elements off the delta buffer
+	dbTimer++;
+	if(dbTimer >= DB_TIMEOUT){
+		dbTimer = 0;
+		if(!deltaBuff.empty()){
+			deltaBuff.pop_back();	
+			dbit = deltaBuff.begin();
+		}
+	} 
+
 	int currTime = par->getcurrtime();
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
