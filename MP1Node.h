@@ -20,7 +20,7 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-#define DB_TIMEOUT 10
+#define DB_TIMEOUT 20
 
 
 // Message sizes
@@ -29,7 +29,7 @@
 #define ACK_MSG_SIZE  SMALL_MSG_SIZE
 
 // Tuning constants
-#define M 1 //Number of processes to randomly ping
+#define M 3 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
 #define NOT_PINGED -1
 

@@ -29,8 +29,8 @@ echo "============================================"
 echo "Single Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean > /dev/null
-	make > /dev/null
+	make clean 2> /dev/null
+	make 2> /dev/null
 	./Application testcases/singlefailure.conf > /dev/null
 else
 	make clean
@@ -40,6 +40,7 @@ fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
 if [ $joincount -eq 100 ]; then
 	grade=`expr $grade + 10`
+	echo "Join count" $joincount 
 	echo "Checking Join..................10/10"
 else
 	joinfrom=`grep joined dbg.log | cut -d" " -f2 | sort -u`
@@ -78,8 +79,8 @@ echo "============================================"
 echo "Multi Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean > /dev/null
-	make > /dev/null
+	make clean 2> /dev/null
+	make 2> /dev/null
 	./Application testcases/multifailure.conf > /dev/null
 else
 	make clean
@@ -141,8 +142,8 @@ echo "============================================"
 echo "Message Drop Single Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean > /dev/null
-	make > /dev/null
+	make clean 2> /dev/null
+	make 2> /dev/null
 	./Application testcases/msgdropsinglefailure.conf > /dev/null
 else
 	make clean

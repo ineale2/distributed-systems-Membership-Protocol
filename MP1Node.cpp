@@ -129,7 +129,7 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
         log->LOG(&memberNode->addr, "Starting up group...");
 #endif
         memberNode->inGroup = true;
-		memberMap[memberNode->addr.getAddress()] = ALIVE;
+		writeDeltaBuff(memberNode->addr.getAddress(), JOINED);
     }
     else {
         size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
@@ -360,6 +360,7 @@ Address MP1Node::readDeltaBuff(dbTypes* type){
 }
 
 void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
+	 
 
 	// Find if this node is in the map
 	auto it = memberMap.find(addr.getAddress());
@@ -368,21 +369,29 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 	bool newEvent = false;
 	if(type == FAILED){
 		// If the node is in the map, write to grading log that the node has been removed, then remove it from map
+		cout << "writeDeltaBuff: FAILED ... ";
 		if(it != memberMap.end()){
 			memberMap.erase(it);
 			log->logNodeRemove(&memberNode->addr, &addr);
 			newEvent = true;
+			cout << "REMOVED";        
 		}
+		
+			cout << endl;
 	}
 	else if(type == JOINED){
 		// If the node is not in the map, write to grading log that the node has joined, then add it to map
+		cout << "writeDeltaBuff: JOINED ... ";
 		if(it == memberMap.end()){
 			log->logNodeAdd(&memberNode->addr, &addr);
 			memberMap[addr.getAddress()] = ALIVE;
 			newEvent = true;
+			cout << "ADDED";
 		}
+		cout <<  endl;
 	} 
 	else if(type == EMPTY){
+		cout << "writeDeltaBuff: EMPTY" << endl;
 		// Sender process' delta buffer was empty, do nothing
 		return;
 	}
