@@ -21,9 +21,20 @@
 #define TREMOVE 20
 #define TFAIL 5
 
+
+// Message sizes
+#define SMALL_MSG_SIZE (sizeof(MessageHdr) + sizeof(Address)*2 + sizeof(dbTypes))
+#define PING_MSG_SIZE SMALL_MSG_SIZE
+#define ACK_MSG_SIZE  SMALL_MSG_SIZE
+
+// Tuning constants
 #define M 1 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
 #define NOT_PINGED -1
+
+#define DELTA_BUFF_SIZE 10
+#define NOT_ALIVE  0
+#define ALIVE  1
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
@@ -41,6 +52,11 @@ enum MsgTypes{
     DUMMYLASTMSGTYPE
 };
 
+enum dbTypes{
+	FAILED,
+	JOINED,
+	EMPTY 
+};
 /**
  * STRUCT NAME: MessageHdr
  *
@@ -58,21 +74,26 @@ typedef struct MessageHdr {
 
 class MP1Node {
 private:
+	/* Private Data */
 	EmulNet *emulNet;
 	Log *log;
 	Params *par;
 	Member *memberNode;
 	map<string, long> pingMap;
+	map<string, long> ipingMap; 
+	map<string, short> memberMap; //Address : failed?
+	deque<pair<string, dbTypes> > deltaBuff;	
+	deque<pair<string, dbTypes> >::iterator dbit;
 	char NULLADDR[6];
 
-	void 	sendACK(Address addr);
+	/* Private Methods */
+	Address readDeltaBuff(dbTypes*);
+	void 	writeDeltaBuff(Address, dbTypes);
 	char* 	createJOINREP(size_t* msgSize);
-	char* 	createPING(size_t* msgSize);
-
+	char* 	createMessage(MsgTypes msgType);
 	Address processJOINREQ(MessageHdr* mIn);
 	void 	processJOINREP(MessageHdr* mIn, int size);
-	Address processPING(MessageHdr* mIn, int size);
-	void 	processACK(MessageHdr* mIn);
+	Address processMessage(char* mIn);
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
