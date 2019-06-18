@@ -20,7 +20,7 @@
  */
 #define TREMOVE 20
 #define TFAIL 5
-#define DB_TIMEOUT 20
+#define DB_TIMEOUT 15
 
 
 // Message sizes
@@ -34,8 +34,6 @@
 #define NOT_PINGED -1
 
 #define DELTA_BUFF_SIZE 30
-#define NOT_ALIVE  0
-#define ALIVE  1
 /*
  * Note: You can change/add any functions in MP1Node.{h,cpp}
  */
@@ -56,6 +54,7 @@ enum MsgTypes{
 enum dbTypes{
 	FAILED,
 	JOINED,
+	REJUV,
 	EMPTY 
 };
 /**
@@ -80,9 +79,9 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
-	map<string, long> pingMap;
-	map<string, long> ipingMap; 
-	map<string, short> memberMap; //Address : failed?
+	map<string, long> memberMap; 
+	
+	deque<pair<string, long   > > suspects;
 	deque<pair<string, dbTypes> > deltaBuff;	
 	deque<pair<string, dbTypes> >::iterator dbit;
 	char NULLADDR[6];

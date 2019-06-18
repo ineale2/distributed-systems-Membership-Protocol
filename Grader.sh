@@ -29,12 +29,12 @@ echo "============================================"
 echo "Single Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean 2> /dev/null
-	make 2> /dev/null
+#	make clean 2> /dev/null
+#	make 2> /dev/null
 	./Application testcases/singlefailure.conf > /dev/null
 else
-	make clean
-	make
+#	make clean
+#	make
 	./Application testcases/singlefailure.conf
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
@@ -79,12 +79,12 @@ echo "============================================"
 echo "Multi Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean 2> /dev/null
-	make 2> /dev/null
+#	make clean 2> /dev/null
+#	make 2> /dev/null
 	./Application testcases/multifailure.conf > /dev/null
 else
-	make clean
-	make
+#	make clean
+#	make
 	./Application testcases/multifailure.conf
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
@@ -142,12 +142,12 @@ echo "============================================"
 echo "Message Drop Single Failure Scenario"
 echo "============================"
 if [ $verbose -eq 0 ]; then
-	make clean 2> /dev/null
-	make 2> /dev/null
+#	make clean 2> /dev/null
+#	make 2> /dev/null
 	./Application testcases/msgdropsinglefailure.conf > /dev/null
 else
-	make clean
-	make
+#	make clean
+#	make
 	./Application testcases/msgdropsinglefailure.conf
 fi
 joincount=`grep joined dbg.log | cut -d" " -f2,4-7 | sort -u | wc -l`
