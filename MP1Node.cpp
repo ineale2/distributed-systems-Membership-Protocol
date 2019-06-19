@@ -358,21 +358,17 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 	// Find if this node is in the map
 	auto it = memberMap.find(addr.getAddress());
 	// Update grading log and membership map
-	// TODO: Need to figure out why process is added multiple times to suspected queue
 	bool newEvent = false;
 	if(type == FAILED){
 		// If the node is in the map, write to grading log that the node has been removed, then remove it from map
 		if(it != memberMap.end() && memberMap[addr.getAddress()] != SUSPECTED){
 			
-			cout << "T = " << currTime << " :: Process " << memberNode->addr.getAddress() << " added  " << addr.getAddress() << " to suspects queue (writeDeltaBuff)" << endl;
-			cout << "memberMap[addr] = " << memberMap[addr.getAddress()] << endl;
 			// Put this node in the queue of suspected processes
 			pair<string, long> newEntry(addr.getAddress(), currTime + TREMOVE);
 			suspects.push_back(newEntry);
+
 			// Mark as suspected in memberMap to prevent duplicate addition
 			memberMap[addr.getAddress()] = SUSPECTED;
-			cout << "memberMap[addr] = " << memberMap[addr.getAddress()] << endl;
-			
 			newEvent = true;
 		}
 		
@@ -386,11 +382,8 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 		}
 	} 
 	else if(type == REJUV){
-			cout<< "REJUV: addr = " << addr.getAddress() << endl;
-			cout <<"REJUV: suspects.size() = " << suspects.size() << endl;
 			//Search through suspects and remove
 			for(auto curr = suspects.begin(); curr != suspects.end(); ){
-			cout << "LOOP: curr->first = " << curr->first << endl;
 				if(curr->first.compare(addr.getAddress()) == 0){
 					// Erase from the suspects map, and mark it as having responded to (some other node's) ACK
 					curr = suspects.erase(curr);
@@ -553,17 +546,9 @@ void MP1Node::nodeLoopOps() {
 		memberMap.erase(suspects.front().first);
 		log->logNodeRemove(&memberNode->addr, &addr);
 		// Remove this element from the suspects queue
-		cout << "T = " << currTime << " :: Process " << memberNode->addr.getAddress() << " marked " << addr.getAddress() << " as failed" << endl;
 		suspects.pop_front();	
 			
 	}
-	cout << "T = " << currTime << " :: Process " << memberNode->addr.getAddress() << " printing suspects queue " << endl;
-	auto sit = suspects.begin();
-	for(; sit !=suspects.end(); sit++){
-		cout << sit->first << " pinged at " << memberMap[sit->first] << endl;
-		
-	}
-	cout << "End Suspects Queue " << endl;
 
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
@@ -571,7 +556,6 @@ void MP1Node::nodeLoopOps() {
 	for(itMap = memberMap.begin(); itMap != memberMap.end(); itMap++){
 		if(itMap->second != NOT_PINGED && itMap->second != SUSPECTED && currTime - itMap->second  > TFAIL){
 			// Suspect the process as failed
-			cout << "Node Loop Ops calling writeDeltaBuff" << endl;
 			writeDeltaBuff(itMap->first, FAILED);
 		}	
 	}	
@@ -579,19 +563,12 @@ void MP1Node::nodeLoopOps() {
 	// Construct PING message, containing all nodes currently known to this process
 	char* mOut = createMessage(PING);
 	// Chose M random processes to send a PING
-	//TODO: ENsend returns 0 if message dropped, then should resend msg
 
 	// Select a random element
 	int s = memberMap.size();
-	if(s == 0) {
-		cout << "size = 0, about to crash... " << endl;
-		cout << "Process " << memberNode->addr.getAddress() << endl;
-	}
 	int p = rand() % memberMap.size();
-	if(s == 0) cout << "jk didnt crash" << endl;
 	auto it = memberMap.begin();
 	std::advance(it, p);
-	auto firstPicked = it;
 	int attempts = 0;
 
 	for(int i = 0; i < M && attempts < memberMap.size(); ){
@@ -602,6 +579,7 @@ void MP1Node::nodeLoopOps() {
 			//Don't count this
 			continue;
 		}
+//NOTE: The following commented code causes failures because if a message is dropped, the process is assumed to be failed and it will not be pinged again
 /*
 		// Only PING if you are not waiting for a reply
 		if(memberMap[addr.getAddress()] != NOT_PINGED){
