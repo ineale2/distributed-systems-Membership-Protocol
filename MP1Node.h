@@ -32,6 +32,7 @@
 #define M 3 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
 #define NOT_PINGED -1
+#define SUSPECTED  -2
 
 #define DELTA_BUFF_SIZE 30
 /*
