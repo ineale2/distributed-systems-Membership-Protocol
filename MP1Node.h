@@ -31,8 +31,6 @@
 // Tuning constants
 #define M 3 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
-#define NOT_PINGED -1
-#define SUSPECTED  -2
 
 #define DELTA_BUFF_SIZE 30
 /*
@@ -58,6 +56,16 @@ enum dbTypes{
 	REJUV,
 	EMPTY 
 };
+
+enum nodeStatus{
+	NOT_SUSPECTED,
+	SUSPECTED
+};
+
+enum pingStatus{
+	NOT_PINGED,
+	PINGED 
+};
 /**
  * STRUCT NAME: MessageHdr
  *
@@ -66,6 +74,29 @@ enum dbTypes{
 typedef struct MessageHdr {
 	enum MsgTypes msgType;
 }MessageHdr;
+
+struct nodeData{
+	enum nodeStatus nstat;
+	enum pingStatus pstat;
+	long seq;
+	nodeData(enum nodeStatus ns, enum pingStatus ps, long s): nstat(ns), pstat(ps), seq(s)
+	{
+	}
+	nodeData() : nstat(NOT_SUSPECTED), pstat(NOT_PINGED), seq(0)
+	{
+	}
+};
+
+struct pingData{
+	long expTime;
+	long seq;
+	string addr;
+	pingData(long et, long s, string a) : expTime(et), seq(s), addr(a){
+	}
+	pingData() : expTime(0), seq(0), addr()
+	{
+	}
+};
 
 /**
  * CLASS NAME: MP1Node
@@ -80,13 +111,23 @@ private:
 	Log *log;
 	Params *par;
 	Member *memberNode;
-	map<string, long> memberMap; 
 	
+	/* pinged is a queue of the processes that this node has pinged */
+	queue<pingData> pinged;
+
+	/* memberMap is a map of all nodes known to this node from the address (as a string) to a struct of status for the node */
+	map<string, nodeData> memberMap; 
+
+	/* suspects is a queue of all nodes that this node suspects to be failed. 
+	The pair is the address of the process and the time at which the suspected process will be removed from the member map */
 	deque<pair<string, long   > > suspects;
+
+	/* deltaBuff is a queue of events to gossip about. dbit is an iterator over the deltaBuff */
 	deque<pair<string, dbTypes> > deltaBuff;	
 	deque<pair<string, dbTypes> >::iterator dbit;
-	char NULLADDR[6];
 	int dbTimer;
+
+	char NULLADDR[6];
 
 	/* Private Methods */
 	Address readDeltaBuff(dbTypes*);
@@ -111,10 +152,10 @@ public:
 	void nodeLoop();
 	void checkMessages();
 	bool recvCallBack(void *env, char *data, int size);
+	void initMemberListTable(Member *memberNode);
 	void nodeLoopOps();
 	int isNullAddress(Address *addr);
 	Address getJoinAddress();
-	void initMemberListTable(Member *memberNode);
 	void printAddress(Address *addr);
 	virtual ~MP1Node();
 };

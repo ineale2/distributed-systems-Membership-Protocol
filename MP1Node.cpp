@@ -134,13 +134,12 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
 		writeDeltaBuff(memberNode->addr.getAddress(), JOINED);
     }
     else {
-        size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + sizeof(long) + 1;
+        size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + 1;
         msg = (MessageHdr *) malloc(msgsize * sizeof(char));
 
         // create JOINREQ message: format of data is {struct Address myaddr}
         msg->msgType = JOINREQ;
         memcpy((char *)(msg+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
-        memcpy((char *)(msg+1) + 1 + sizeof(memberNode->addr.addr), &memberNode->heartbeat, sizeof(long));
 
 #ifdef DEBUGLOG
         sprintf(s, "Trying to join...");
@@ -216,13 +215,9 @@ void MP1Node::checkMessages() {
 
 Address MP1Node::processJOINREQ(MessageHdr* mIn){
 	Address addr;
-	int id;
-	short port; 
-	long hb;
 
-	// Get address and heartbeat of sender from message
+	// Get address of sender from message
 	memcpy(&addr, (char*)(mIn+1), 					sizeof(addr));
-	memcpy(&hb,   (char*)(mIn+1) + 1 + sizeof(addr),  sizeof(long));
  
 	// Update delta buffer and membership map with a new process
 	writeDeltaBuff(addr, JOINED);
@@ -252,20 +247,22 @@ char* MP1Node::createJOINREP(size_t* msgSize){
 
 void MP1Node::processJOINREP(MessageHdr* mIn, int size){
 
-	long* nodeData = (long*)(mIn + 1);
+	long* data = (long*)(mIn + 1);
 	int numNodes = (size - sizeof(MessageHdr))/(2*sizeof(long));
 	int id;
 	short port;
 	Address addr;
+	// Create an empty entry to be added for various messages
+	nodeData newEntry = nodeData(NOT_SUSPECTED, NOT_PINGED, 0);
 	// Create a vector from the message recieved from introducer
 	for(int i = 0; i < numNodes*2; ){
-		id   = (int)nodeData[i++];
-		port = (short)nodeData[i++];
+		id   = (int)data[i++];
+		port = (short)data[i++];
 	
 		// Create an Address so it can be added to the grading log
 		memcpy(&addr.addr[0], &id,   sizeof(int));
 		memcpy(&addr.addr[4], &port, sizeof(short));
-		memberMap[addr.getAddress()] = NOT_PINGED;
+		memberMap[addr.getAddress()] = newEntry;
 		log->logNodeAdd(&memberNode->addr, &addr);
 	}
 	// Mark yourself as in the group
@@ -361,14 +358,14 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 	bool newEvent = false;
 	if(type == FAILED){
 		// If the node is in the map, write to grading log that the node has been removed, then remove it from map
-		if(it != memberMap.end() && memberMap[addr.getAddress()] != SUSPECTED){
+		if(it != memberMap.end() && memberMap[addr.getAddress()].nstat != SUSPECTED){
 			
 			// Put this node in the queue of suspected processes
 			pair<string, long> newEntry(addr.getAddress(), currTime + TREMOVE);
 			suspects.push_back(newEntry);
 
 			// Mark as suspected in memberMap to prevent duplicate addition
-			memberMap[addr.getAddress()] = SUSPECTED;
+			memberMap[addr.getAddress()].nstat = SUSPECTED;
 			newEvent = true;
 		}
 		
@@ -377,23 +374,29 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 		// If the node is not in the map, write to grading log that the node has joined, then add it to map
 		if(it == memberMap.end()){
 			log->logNodeAdd(&memberNode->addr, &addr);
-			memberMap[addr.getAddress()] = NOT_PINGED;
+			memberMap[addr.getAddress()].pstat = NOT_PINGED;
+			memberMap[addr.getAddress()].nstat = NOT_SUSPECTED;
+			memberMap[addr.getAddress()].seq   = 0;
 			newEvent = true;
 		}
 	} 
 	else if(type == REJUV){
-			//Search through suspects and remove
-			for(auto curr = suspects.begin(); curr != suspects.end(); ){
-				if(curr->first.compare(addr.getAddress()) == 0){
-					// Erase from the suspects map, and mark it as having responded to (some other node's) ACK
-					curr = suspects.erase(curr);
-					memberMap[addr.getAddress()] = NOT_PINGED;
-					// If the node still has this process in the suspects queue, then start gossiping about it
-					newEvent = true;
-				}
-				else{
-					// This handles the iterator being invalidated when erase is called
-					curr++;
+			//If the process is in the suspects queue, then search through suspects and remove
+			if(it != memberMap.end() && memberMap[addr.getAddress()].nstat == SUSPECTED){
+				for(auto curr = suspects.begin(); curr != suspects.end(); ){
+					if(curr->first.compare(addr.getAddress()) == 0){
+						// Erase from the suspects map, and mark it as having responded to (some other node's) ACK
+						curr = suspects.erase(curr);
+						memberMap[addr.getAddress()].nstat  = NOT_SUSPECTED;
+						memberMap[addr.getAddress()].pstat  = NOT_PINGED;
+						memberMap[addr.getAddress()].seq++;
+						// If the node still has this process in the suspects queue, then start gossiping about it
+						newEvent = true;
+					}
+					else{
+						// This handles the iterator being invalidated when erase is called
+						curr++;
+					}
 				}
 			}
 	}
@@ -491,22 +494,26 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 			addr = processMessage((char*)mIn);
 
 			// If this process is suspected to be failed, remove it from the suspects queue and send REJUV
-			if(memberMap[addr.getAddress()] == SUSPECTED){
+			if(memberMap[addr.getAddress()].nstat == SUSPECTED){
 				writeDeltaBuff(addr, REJUV);
 			}
 
-			// Mark the process as having responded
-			memberMap[addr.getAddress()] = NOT_PINGED;
-
+			// Mark the process as having responded and increment sequence number
+			memberMap[addr.getAddress()].pstat = NOT_PINGED;
+			memberMap[addr.getAddress()].seq++;
+			//cout << time << " Process " << memberNode->addr.getAddress() << " got ACK from " << addr.getAddress() << endl;
 
 			break;
 		}
 		case IPING:
-		{
+		{	
+			// Get the Sender and Process to send IPING to
+
 			break;
 		}
 		case IACK:
 		{
+			// Send an IPING to the pro
 			break;
 		}
 		default:
@@ -552,6 +559,8 @@ void MP1Node::nodeLoopOps() {
 
 	// Check list of processes that have been sent a PING
 	// If the process has timed out, send IPING to K processes and refresh the timer 
+	// TODO: This is O(n), want to only check processes that have been pinged
+	/*
 	map<string, long>::iterator itMap;
 	for(itMap = memberMap.begin(); itMap != memberMap.end(); itMap++){
 		if(itMap->second != NOT_PINGED && itMap->second != SUSPECTED && currTime - itMap->second  > TFAIL){
@@ -559,17 +568,36 @@ void MP1Node::nodeLoopOps() {
 			writeDeltaBuff(itMap->first, FAILED);
 		}	
 	}	
-	
-	// Construct PING message, containing all nodes currently known to this process
+	*/
+	pingData pdata;
+//	cout << currTime << "Process " << memberNode->addr.getAddress() << " processing pingData " << endl; 
+	while(!pinged.empty() && pinged.front().expTime < currTime ){
+		pdata = pinged.front();
+		pinged.pop();
+	//	cout << "currTime = " << currTime << " expTime = " << pinged.front().expTime << " for proc " << pdata.addr << "with SEQ = " << pdata.seq << endl; 
+		auto mIt = memberMap.find(pdata.addr);
+		/* Check if the sequence number has not been incremented, indicating that no ACK was recieved */
+		if(mIt != memberMap.end() && pdata.seq == mIt->second.seq){
+			cout << currTime << " Process " << memberNode->addr.getAddress() << " suspects " << pdata.addr << " as failed "  << endl;
+			writeDeltaBuff(pdata.addr, FAILED);
+		}
+	} 			
+
+	// Construct PING message, containing an event from the delta buffer
 	char* mOut = createMessage(PING);
 	// Chose M random processes to send a PING
 
 	// Select a random element
 	int s = memberMap.size();
+	if( s==0){
+		cout << "size is zero.. crashing " << endl;
+	}
+
+
 	int p = rand() % memberMap.size();
 	auto it = memberMap.begin();
 	std::advance(it, p);
-	int attempts = 0;
+	unsigned long attempts = 0;
 
 	for(int i = 0; i < M && attempts < memberMap.size(); ){
 		attempts++;
@@ -590,9 +618,14 @@ void MP1Node::nodeLoopOps() {
 */	
 		emulNet->ENsend(&memberNode->addr, &addr, mOut, PING_MSG_SIZE);
 		// Add processes to PING map
-		if(memberMap[addr.getAddress()] != SUSPECTED){
-			memberMap[addr.getAddress()] = currTime;
-		}
+		memberMap[addr.getAddress()].pstat = PINGED;
+
+		// Add ping event to the queue
+		pdata.expTime = currTime + TFAIL;
+		pdata.seq     = it->second.seq;
+		pdata.addr    = it->first;
+		pinged.push(pdata);
+	//	cout << currTime << " Process " << memberNode->addr.getAddress() << " pinged process " << pdata.addr << "with expTime = " << pdata.expTime << "and SEQ = " << pdata.seq << endl; 
 		// Go to next element, wrapping around if needed
 		i++;
 		it++;
