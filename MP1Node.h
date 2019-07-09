@@ -29,7 +29,7 @@
 #define ACK_MSG_SIZE  SMALL_MSG_SIZE
 
 // Tuning constants
-#define M 3 //Number of processes to randomly ping
+#define M 5 //Number of processes to randomly ping
 #define K 1 //Number of processes to select for indirect ping
 
 #define DELTA_BUFF_SIZE 30
@@ -98,6 +98,16 @@ struct pingData{
 	}
 };
 
+struct dbData{
+	string addr;
+	dbTypes dbType;
+	long seq;
+	dbData(string a, dbTypes d, long s) : addr(a), dbType(d), seq(s){
+	}
+	dbData() : addr(), dbType(EMPTY), seq(0){
+	}
+};
+
 /**
  * CLASS NAME: MP1Node
  *
@@ -123,8 +133,8 @@ private:
 	deque<pair<string, long   > > suspects;
 
 	/* deltaBuff is a queue of events to gossip about. dbit is an iterator over the deltaBuff */
-	deque<pair<string, dbTypes> > deltaBuff;	
-	deque<pair<string, dbTypes> >::iterator dbit;
+	deque<dbData> deltaBuff;	
+	deque<dbData>::iterator dbit;
 	int dbTimer;
 
 	char NULLADDR[6];

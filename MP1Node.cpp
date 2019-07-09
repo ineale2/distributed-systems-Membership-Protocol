@@ -1,4 +1,4 @@
-
+//TODO: Memory cleanup, make messages a single type, implement IACK and IPINGs, cleanup id/port code
 /**********************************
  * FILE NAME: MP1Node.cpp
  * 
@@ -162,9 +162,8 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
  * DESCRIPTION: Wind up this node and clean up state
  */
 int MP1Node::finishUpThisNode(){
-   /*
-    * Your code goes here
-    */
+
+	delete memberNode;
 
 	return 0;
 }
@@ -296,6 +295,8 @@ Address MP1Node::processMessage(char* mIn){
 
 	// Update membership list based on message in data
 	writeDeltaBuff(db_addr, type);	
+	
+	//cout << "Node " << memberNode->addr.getAddress() << " recv info on " << db_addr.getAddress() << " " << type << endl;
 
 	return sender;
 }
@@ -308,6 +309,7 @@ char* MP1Node::createMessage(MsgTypes msgType){
 	// Grab an address from recent change buffer 
 	dbTypes db_type;
 	Address addr = readDeltaBuff(&db_type);	
+	//cout << "Message created with gossip about " << addr.getAddress() << " for event " << db_type << endl;
 
 	mOut = (MessageHdr*)malloc(SMALL_MSG_SIZE);
 	char* mTemp   = (char*)mOut;
@@ -340,9 +342,28 @@ Address MP1Node::readDeltaBuff(dbTypes* type){
 	if(dbit == deltaBuff.end()){
 		dbit = deltaBuff.begin();
 	}
-	
-	Address addr(dbit->first); 
-	*type = dbit->second;
+	/*	
+	// Only gossip about events whose nodes have the same sequence number as when pushed into deltaBuff
+	while(true){
+		if(deltaBuff.empty()){
+			*type = EMPTY;
+			return memberNode->addr;
+		}
+		//Make sure not to dereference garbage iterator
+		cout << "readDB: " << memberNode->addr.getAddress() << endl;
+		cout << "sizeDB: " << deltaBuff.size() << endl;
+		cout << "readDB: " << dbit->addr << " " << dbit->dbType << " " << dbit->seq << endl;
+		auto it = memberMap.find(dbit->addr);
+		if(it == memberMap.end() || dbit->seq != it->second.seq){
+			dbit = deltaBuff.erase(dbit);
+		}
+		else{
+			break;
+		}
+	}
+	*/
+	Address addr(dbit->addr); 
+	*type = dbit->dbType;
 
 	// Increment iterator
 	dbit++;
@@ -411,23 +432,27 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 
 	// Update delta buffer if this is a new event to the process
 	if(newEvent){
+		//NOTE: No longer have to remove because sequence number is pushed and compared
+		
 		// Need to remove any other events about this address/process from the delta buffer
 		// This ensures that the node is not simply added back later after being marked as failed
 		for(dbit = deltaBuff.begin(); dbit != deltaBuff.end(); dbit++){
 			// If the strings are equal, then remove this element and break out of loop
-			if(addr.getAddress().compare(dbit->first) == 0){
+			if(addr.getAddress().compare(dbit->addr) == 0){
 				deltaBuff.erase(dbit);
 				break;
 			}
 		}
-
+		
 		// If the delta buffer is at capacity, remove an element before pushing
 		if(deltaBuff.size() >= DELTA_BUFF_SIZE){
 			deltaBuff.pop_back();	
 		}	
 		// Push new element into delta buffer
-		pair<string, dbTypes> dbe(addr.getAddress(), type); 
+//		pair<string, dbTypes> dbe(addr.getAddress(), type); 
+		dbData dbe = dbData(addr.getAddress(), type, memberMap[addr.getAddress()].seq); 
 		deltaBuff.push_front(dbe);
+	//	cout << currTime << " " <<  memberNode->addr.getAddress() << " writeDeltaBuff: " << dbe.addr << " "<< (int)dbe.dbType <<" " <<  dbe.seq << endl;
 
 
 		// Reset the iterator
@@ -520,6 +545,8 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 			cout << memberNode->addr.getAddress() << ": INVALID MESSAGE" << endl;
 			break;
 	}
+	//Free the message
+	free(data);
 	
 	return true;	
 }
@@ -557,18 +584,6 @@ void MP1Node::nodeLoopOps() {
 			
 	}
 
-	// Check list of processes that have been sent a PING
-	// If the process has timed out, send IPING to K processes and refresh the timer 
-	// TODO: This is O(n), want to only check processes that have been pinged
-	/*
-	map<string, long>::iterator itMap;
-	for(itMap = memberMap.begin(); itMap != memberMap.end(); itMap++){
-		if(itMap->second != NOT_PINGED && itMap->second != SUSPECTED && currTime - itMap->second  > TFAIL){
-			// Suspect the process as failed
-			writeDeltaBuff(itMap->first, FAILED);
-		}	
-	}	
-	*/
 	pingData pdata;
 //	cout << currTime << "Process " << memberNode->addr.getAddress() << " processing pingData " << endl; 
 	while(!pinged.empty() && pinged.front().expTime < currTime ){
@@ -578,7 +593,7 @@ void MP1Node::nodeLoopOps() {
 		auto mIt = memberMap.find(pdata.addr);
 		/* Check if the sequence number has not been incremented, indicating that no ACK was recieved */
 		if(mIt != memberMap.end() && pdata.seq == mIt->second.seq){
-			cout << currTime << " Process " << memberNode->addr.getAddress() << " suspects " << pdata.addr << " as failed "  << endl;
+			//cout << currTime << " Process " << memberNode->addr.getAddress() << " suspects " << pdata.addr << " as failed "  << endl;
 			writeDeltaBuff(pdata.addr, FAILED);
 		}
 	} 			
@@ -616,15 +631,18 @@ void MP1Node::nodeLoopOps() {
 			continue;
 		}
 */	
+		//cout << "Process " << memberNode->addr.getAddress() << " pinging process " << addr.getAddress() << endl;
 		emulNet->ENsend(&memberNode->addr, &addr, mOut, PING_MSG_SIZE);
+
+		// Add ping event to the queue if it is not already there
+		if(memberMap[addr.getAddress()].pstat == NOT_PINGED){
+			pdata.expTime = currTime + TFAIL;
+			pdata.seq     = it->second.seq;
+			pdata.addr    = it->first;
+			pinged.push(pdata);
+		}
 		// Add processes to PING map
 		memberMap[addr.getAddress()].pstat = PINGED;
-
-		// Add ping event to the queue
-		pdata.expTime = currTime + TFAIL;
-		pdata.seq     = it->second.seq;
-		pdata.addr    = it->first;
-		pinged.push(pdata);
 	//	cout << currTime << " Process " << memberNode->addr.getAddress() << " pinged process " << pdata.addr << "with expTime = " << pdata.expTime << "and SEQ = " << pdata.seq << endl; 
 		// Go to next element, wrapping around if needed
 		i++;
@@ -633,7 +651,7 @@ void MP1Node::nodeLoopOps() {
 			it = memberMap.begin();
 		}
 	}
-
+	//cout << endl;
 	//clean up memory
 	free(mOut);
     return;
