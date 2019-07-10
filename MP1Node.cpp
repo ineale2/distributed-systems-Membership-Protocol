@@ -27,6 +27,7 @@ MP1Node::MP1Node(Member *member, Params *params, EmulNet *emul, Log *log, Addres
 	this->log = log;
 	this->par = params;
 	this->memberNode->addr = *address;
+	this->dbTimer = 0;
 }
 
 /**
@@ -332,35 +333,22 @@ char* MP1Node::createMessage(MsgTypes msgType){
 }
 
 Address MP1Node::readDeltaBuff(dbTypes* type){
-	// If the delta buffer is empty, then return empty and a dummy address
-	if(deltaBuff.empty()){
-		*type = EMPTY;
-		return memberNode->addr;
-	}
-	
-	// Reset iterator if end was reached
-	if(dbit == deltaBuff.end()){
-		dbit = deltaBuff.begin();
-	}
-		
+
 	// Only gossip about events whose nodes have the same sequence number as when pushed into deltaBuff
 	while(true){
+		// If the delta buffer is empty, then return empty and a dummy address
 		if(deltaBuff.empty()){
 			*type = EMPTY;
 			return memberNode->addr;
 		}
+		// Reset iterator if end was reached
+		if(dbit == deltaBuff.end()){
+			dbit = deltaBuff.begin();
+		}
 		//Make sure not to dereference garbage iterator
-		//cout << "readDB: " << memberNode->addr.getAddress() << endl;
-		//cout << "sizeDB: " << deltaBuff.size() << endl;
-		//cout << "readDB: " << dbit->addr << " " << dbit->dbType << " " << dbit->dbseq << endl;
-		//cout << dbit->addr << endl;
 		auto it = memberMap.find(dbit->addr);
 		if(it == memberMap.end() || dbit->dbseq != it->second.dbseq){
 			dbit = deltaBuff.erase(dbit);
-			//dbit++;
-			if(dbit == deltaBuff.end()){
-				dbit = deltaBuff.begin();
-			}
 		}
 		else{
 			break;
