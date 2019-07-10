@@ -24,7 +24,7 @@
 
 
 // Message sizes
-#define SMALL_MSG_SIZE (sizeof(MessageHdr) + sizeof(Address)*2 + sizeof(dbTypes))
+#define SMALL_MSG_SIZE sizeof(msg)
 #define PING_MSG_SIZE SMALL_MSG_SIZE
 #define ACK_MSG_SIZE  SMALL_MSG_SIZE
 
@@ -40,7 +40,7 @@
 /**
  * Message Types
  */
-enum MsgTypes{
+enum msgTypes{
     JOINREQ,
     JOINREP,
     PING,
@@ -67,13 +67,19 @@ enum pingStatus{
 	PINGED 
 };
 /**
- * STRUCT NAME: MessageHdr
+ * STRUCT NAME: msg
  *
  * DESCRIPTION: Header and content of a message
  */
-typedef struct MessageHdr {
-	enum MsgTypes msgType;
-}MessageHdr;
+typedef struct msg{
+	msgTypes msgType;
+	Address sender;
+	dbTypes gossipType;	
+	Address dbAddr;
+	msg(msgTypes mt, Address sen, dbTypes gt, Address dba) : msgType(mt), sender(sen), gossipType(gt), dbAddr(dba)
+	{
+	}
+}msg;
 
 struct nodeData{
 	enum nodeStatus nstat;
@@ -81,7 +87,7 @@ struct nodeData{
 	long pseq;  //Sequence number for ping queue
 	long dbseq; //Sequence number for deltaBuffer
 	long sseq;  //Sequence number for suspects queue
-	nodeData(enum nodeStatus ns, enum pingStatus ps, long psq, long ds, long ss): nstat(ns), pstat(ps), pseq(psq), dbseq(ds), sseq(ss) 
+	nodeData(nodeStatus ns, pingStatus ps, long psq, long ds, long ss): nstat(ns), pstat(ps), pseq(psq), dbseq(ds), sseq(ss) 
 	{
 	}
 	nodeData() : nstat(NOT_SUSPECTED), pstat(NOT_PINGED), pseq(0), dbseq(0), sseq(0)
@@ -145,10 +151,10 @@ private:
 	Address readDeltaBuff(dbTypes*);
 	void 	writeDeltaBuff(Address, dbTypes);
 	char* 	createJOINREP(size_t* msgSize);
-	char* 	createMessage(MsgTypes msgType);
-	Address processJOINREQ(MessageHdr* mIn);
-	void 	processJOINREP(MessageHdr* mIn, int size);
-	Address processMessage(char* mIn);
+	msg* 	createMessage(msgTypes msgType);
+	Address processJOINREQ(char* mIn);
+	void 	processJOINREP(char* mIn, int size);
+	Address processMessage(msg* mIn);
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);

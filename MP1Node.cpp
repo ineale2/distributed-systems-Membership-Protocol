@@ -121,7 +121,7 @@ int MP1Node::initThisNode(Address *joinaddr) {
  * DESCRIPTION: Join the distributed system
  */
 int MP1Node::introduceSelfToGroup(Address *joinaddr) {
-	MessageHdr *msg;
+	msgTypes *msg;
 #ifdef DEBUGLOG
     static char s[1024];
 #endif
@@ -135,11 +135,11 @@ int MP1Node::introduceSelfToGroup(Address *joinaddr) {
 		writeDeltaBuff(memberNode->addr.getAddress(), JOINED);
     }
     else {
-        size_t msgsize = sizeof(MessageHdr) + sizeof(joinaddr->addr) + 1;
-        msg = (MessageHdr *) malloc(msgsize * sizeof(char));
+        size_t msgsize = sizeof(msgTypes) + sizeof(joinaddr->addr) + 1;
+        msg = (msgTypes*) malloc(msgsize * sizeof(char));
 
         // create JOINREQ message: format of data is {struct Address myaddr}
-        msg->msgType = JOINREQ;
+        *msg = JOINREQ;
         memcpy((char *)(msg+1), &memberNode->addr.addr, sizeof(memberNode->addr.addr));
 
 #ifdef DEBUGLOG
@@ -213,11 +213,11 @@ void MP1Node::checkMessages() {
     return;
 }
 
-Address MP1Node::processJOINREQ(MessageHdr* mIn){
+Address MP1Node::processJOINREQ(char* mIn){
 	Address addr;
 
 	// Get address of sender from message
-	memcpy(&addr, (char*)(mIn+1), sizeof(addr));
+	memcpy(&addr, mIn+sizeof(msgTypes), sizeof(addr));
  
 	// Update delta buffer and membership map with a new process
 	writeDeltaBuff(addr, JOINED);
@@ -228,12 +228,12 @@ Address MP1Node::processJOINREQ(MessageHdr* mIn){
 char* MP1Node::createJOINREP(size_t* msgSize){
 
 	int numNodes = memberMap.size();
-	*msgSize = sizeof(MessageHdr) + sizeof(long)*2*numNodes;
+	*msgSize = sizeof(msgTypes) + sizeof(long)*2*numNodes;
 	// In the message, include list of known nodes
-	MessageHdr* mOut = (MessageHdr*)malloc(*msgSize);
-	mOut->msgType = JOINREP;
+	char* mOut = (char*)malloc(*msgSize);
+	mOut[0]  = (char)JOINREP;
 	auto it = memberMap.begin();
-	long* nodeData  = (long*)(mOut + 1);
+	long* nodeData  = (long*)(mOut + sizeof(msgTypes));
 	for(int c = 0 ; it != memberMap.end() ; it++){
 		size_t pos = it->first.find(":");
 		int id = stoi(it->first.substr(0, pos));
@@ -241,14 +241,14 @@ char* MP1Node::createJOINREP(size_t* msgSize){
 		nodeData[c++] = (long)id;
 		nodeData[c++] = (long)port;
 	}
-	return (char*)mOut;
+	return mOut;
 
 }
 
-void MP1Node::processJOINREP(MessageHdr* mIn, int size){
+void MP1Node::processJOINREP(char* mIn, int size){
 
-	long* data = (long*)(mIn + 1);
-	int numNodes = (size - sizeof(MessageHdr))/(2*sizeof(long));
+	long* data = (long*)(mIn + sizeof(msgTypes));
+	int numNodes = (size - sizeof(msgTypes))/(2*sizeof(long));
 	int id;
 	short port;
 	Address addr;
@@ -276,60 +276,23 @@ void MP1Node::processJOINREP(MessageHdr* mIn, int size){
 	
 }
 
-Address MP1Node::processMessage(char* mIn){
-	Address sender;
-	Address db_addr;
-	dbTypes type;
-	// Skip over message type
-	mIn += sizeof(MessageHdr);
-
-	// Read sender address
-	memcpy(&sender, mIn, sizeof(Address));
-	mIn += sizeof(Address);
-
-	// Read delta buffer type
-	type = *((dbTypes*)mIn);
-	mIn += sizeof(dbTypes);
-
-	// Read delta buffer address
-	memcpy(&db_addr, mIn, sizeof(Address));
-
+Address MP1Node::processMessage(msg* mIn){
 	// Update membership list based on message in data
-	writeDeltaBuff(db_addr, type);	
-	
-	//cout << "Node " << memberNode->addr.getAddress() << " recv info on " << db_addr.getAddress() << " " << type << endl;
+	writeDeltaBuff(mIn->dbAddr, mIn->gossipType);	
 
-	return sender;
+	return mIn->sender;
 }
 
-char* MP1Node::createMessage(MsgTypes msgType){
-
-	MessageHdr* mOut;
-	// Message Structure: messageType::senderAddress:fail/join byte:failed/joinedAddress 
+msg* MP1Node::createMessage(msgTypes msgType){
 
 	// Grab an address from recent change buffer 
 	dbTypes db_type;
-	Address addr = readDeltaBuff(&db_type);	
-	//cout << "Message created with gossip about " << addr.getAddress() << " for event " << db_type << endl;
+	Address db_addr = readDeltaBuff(&db_type);	
 
-	mOut = (MessageHdr*)malloc(SMALL_MSG_SIZE);
-	char* mTemp   = (char*)mOut;
-	// Write message type and increment pointer
-	mOut->msgType = msgType;
-	mTemp += sizeof(MessageHdr);
+	// Create the message
+	msg* mOut = new msg(msgType, memberNode->addr, db_type, db_addr); 
 
-	// Write sender address and increment pointer
-    memcpy(mTemp, &memberNode->addr.addr, sizeof(Address));
-	mTemp += sizeof(Address);
-
-	// Write fail/join byte and increment pointer
-    memcpy(mTemp, &db_type, sizeof(dbTypes));
-	mTemp += sizeof(dbTypes);
-
-	// Write failed/joined address
-    memcpy(mTemp, &addr, sizeof(Address));
-
-	return (char*)mOut;
+	return mOut;
 }
 
 Address MP1Node::readDeltaBuff(dbTypes* type){
@@ -425,18 +388,6 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 
 	// Update delta buffer if this is a new event to the process
 	if(newEvent){
-		//NOTE: No longer have to remove because sequence number is pushed and compared
-	/*	
-		// Need to remove any other events about this address/process from the delta buffer
-		// This ensures that the node is not simply added back later after being marked as failed
-		for(dbit = deltaBuff.begin(); dbit != deltaBuff.end(); dbit++){
-			// If the strings are equal, then remove this element and break out of loop
-			if(addr.getAddress().compare(dbit->addr) == 0){
-				deltaBuff.erase(dbit);
-				break;
-			}
-		}
-	*/	
 		// If the delta buffer is at capacity, remove an element before pushing
 		if(deltaBuff.size() >= DELTA_BUFF_SIZE){
 			deltaBuff.pop_back();	
@@ -447,8 +398,6 @@ void MP1Node::writeDeltaBuff(Address addr, dbTypes type){
 		// Push new element into delta buffer
 		dbData dbe = dbData(a, type, memberMap[a].dbseq); 
 		deltaBuff.push_front(dbe);
-	//	cout << currTime << " " <<  memberNode->addr.getAddress() << " writeDeltaBuff: " << dbe.addr << " "<< (int)dbe.dbType <<" " <<  dbe.seq << endl;
-
 
 		// Reset the iterator
 		dbit = deltaBuff.begin();
@@ -469,49 +418,49 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 	size_t msgSize;
 
 	// Get the message type, and switch on the message type
-	MessageHdr* mIn = (MessageHdr*)data;
-	char* mOut;
+	msg* mIn = (msg*)data;
+	msg* mOut;
 	switch(mIn->msgType){
 		case JOINREQ:
 		{
 		
 			// Add requesting node to membership list, then send full list
-			addr = processJOINREQ(mIn);
+			addr = processJOINREQ(data);
 
 			// Create JOINREP message, msgSize is modified with pass by reference
-			mOut = createJOINREP(&msgSize);
+			char* jrMsg = createJOINREP(&msgSize);
 
 			// Reply with the JOINREP message
-			emulNet->ENsend(&memberNode->addr, &addr, mOut, msgSize);
+			emulNet->ENsend(&memberNode->addr, &addr, jrMsg, msgSize);
 			
 			//clean up memory
-			free(mOut);
+			free(jrMsg);
 
 			break;
 		}	
 		case JOINREP:
 		{
 			// Create membership list based on the vector in the JOINREP message
-			processJOINREP(mIn, size);
+			processJOINREP(data, size);
 
 			break;
 		}
 		case PING:
 		{
 			// Update this nodes membership list based on the ping message
-			addr = processMessage((char*)mIn);
+			addr = processMessage(mIn);
 
 			// Create an ACK message and send it
 			mOut = createMessage(ACK);
-			emulNet->ENsend(&memberNode->addr, &addr, mOut, ACK_MSG_SIZE);
-			free(mOut);
+			emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, ACK_MSG_SIZE);
+			delete mOut;
 			
 			break;
 		}
 		case ACK:
 		{
 			// Update this nodes membership list based on ACK message
-			addr = processMessage((char*)mIn);
+			addr = processMessage(mIn);
 
 			// If this process is suspected to be failed, remove it from the suspects queue and send REJUV
 			if(memberMap[addr.getAddress()].nstat == SUSPECTED){
@@ -521,7 +470,6 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 			// Mark the process as having responded and increment sequence number
 			memberMap[addr.getAddress()].pstat = NOT_PINGED;
 			memberMap[addr.getAddress()].pseq++;
-			//cout << time << " Process " << memberNode->addr.getAddress() << " got ACK from " << addr.getAddress() << endl;
 
 			break;
 		}
@@ -580,21 +528,18 @@ void MP1Node::nodeLoopOps() {
 	}
 
 	pingData pdata;
-//	cout << currTime << "Process " << memberNode->addr.getAddress() << " processing pingData " << endl; 
 	while(!pinged.empty() && pinged.front().expTime < currTime ){
 		pdata = pinged.front();
 		pinged.pop();
-	//	cout << "currTime = " << currTime << " expTime = " << pinged.front().expTime << " for proc " << pdata.addr << "with SEQ = " << pdata.seq << endl; 
 		auto mIt = memberMap.find(pdata.addr);
 		/* Check if the sequence number has not been incremented, indicating that no ACK was recieved */
 		if(mIt != memberMap.end() && pdata.pseq == mIt->second.pseq){
-			//cout << currTime << " Process " << memberNode->addr.getAddress() << " suspects " << pdata.addr << " as failed "  << endl;
 			writeDeltaBuff(pdata.addr, FAILED);
 		}
 	} 			
 
 	// Construct PING message, containing an event from the delta buffer
-	char* mOut = createMessage(PING);
+	msg* mOut = createMessage(PING);
 	// Chose M random processes to send a PING
 
 	// Select a random element
@@ -617,17 +562,7 @@ void MP1Node::nodeLoopOps() {
 			//Don't count this
 			continue;
 		}
-//NOTE: The following commented code causes failures because if a message is dropped, the process is assumed to be failed and it will not be pinged again
-/*
-		// Only PING if you are not waiting for a reply
-		if(memberMap[addr.getAddress()] != NOT_PINGED){
-			cout << "Process " << memberNode->addr.getAddress() << " skipping process " << addr.getAddress() << " with entry " << memberMap[addr.getAddress()] << endl;
-			//Don't count this
-			continue;
-		}
-*/	
-		//cout << "Process " << memberNode->addr.getAddress() << " pinging process " << addr.getAddress() << endl;
-		emulNet->ENsend(&memberNode->addr, &addr, mOut, PING_MSG_SIZE);
+		emulNet->ENsend(&memberNode->addr, &addr, (char*)mOut, PING_MSG_SIZE);
 
 		// Add ping event to the queue if it is not already there
 		if(memberMap[addr.getAddress()].pstat == NOT_PINGED){
@@ -638,7 +573,7 @@ void MP1Node::nodeLoopOps() {
 		}
 		// Add processes to PING map
 		memberMap[addr.getAddress()].pstat = PINGED;
-	//	cout << currTime << " Process " << memberNode->addr.getAddress() << " pinged process " << pdata.addr << "with expTime = " << pdata.expTime << "and SEQ = " << pdata.seq << endl; 
+
 		// Go to next element, wrapping around if needed
 		i++;
 		it++;
@@ -646,9 +581,8 @@ void MP1Node::nodeLoopOps() {
 			it = memberMap.begin();
 		}
 	}
-	//cout << endl;
-	//clean up memory
-	free(mOut);
+	
+	delete mOut;
     return;
 }
 
