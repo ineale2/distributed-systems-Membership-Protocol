@@ -78,22 +78,24 @@ typedef struct MessageHdr {
 struct nodeData{
 	enum nodeStatus nstat;
 	enum pingStatus pstat;
-	long seq;
-	nodeData(enum nodeStatus ns, enum pingStatus ps, long s): nstat(ns), pstat(ps), seq(s)
+	long pseq;  //Sequence number for ping queue
+	long dbseq; //Sequence number for deltaBuffer
+	long sseq;  //Sequence number for suspects queue
+	nodeData(enum nodeStatus ns, enum pingStatus ps, long psq, long ds, long ss): nstat(ns), pstat(ps), pseq(psq), dbseq(ds), sseq(ss) 
 	{
 	}
-	nodeData() : nstat(NOT_SUSPECTED), pstat(NOT_PINGED), seq(0)
+	nodeData() : nstat(NOT_SUSPECTED), pstat(NOT_PINGED), pseq(0), dbseq(0), sseq(0)
 	{
 	}
 };
 
 struct pingData{
 	long expTime;
-	long seq;
+	long pseq;
 	string addr;
-	pingData(long et, long s, string a) : expTime(et), seq(s), addr(a){
+	pingData(long et, long s, string a) : expTime(et), pseq(s), addr(a){
 	}
-	pingData() : expTime(0), seq(0), addr()
+	pingData() : expTime(0), pseq(0), addr()
 	{
 	}
 };
@@ -101,10 +103,10 @@ struct pingData{
 struct dbData{
 	string addr;
 	dbTypes dbType;
-	long seq;
-	dbData(string a, dbTypes d, long s) : addr(a), dbType(d), seq(s){
+	long dbseq;
+	dbData(string a, dbTypes d, long s) : addr(a), dbType(d), dbseq(s){
 	}
-	dbData() : addr(), dbType(EMPTY), seq(0){
+	dbData() : addr(), dbType(EMPTY), dbseq(0){
 	}
 };
 
