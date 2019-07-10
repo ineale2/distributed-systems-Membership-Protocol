@@ -44,10 +44,7 @@ enum msgTypes{
     JOINREQ,
     JOINREP,
     PING,
-    ACK,
-    IPING,
-    IACK,
-    DUMMYLASTMSGTYPE
+    ACK 
 };
 
 enum dbTypes{
@@ -175,6 +172,7 @@ public:
 	int isNullAddress(Address *addr);
 	Address getJoinAddress();
 	void printAddress(Address *addr);
+	void decomposeAddr(string addr, long* id, long* port);
 	virtual ~MP1Node();
 };
 

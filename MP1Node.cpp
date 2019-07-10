@@ -1,6 +1,5 @@
-//TODO: make messages a single type, implement IACK and IPINGs, cleanup id/port code
 /**********************************
- * FILE NAME: MP1Node.cpp
+ FILE NAME: MP1Node.cpp
  * 
  * DESCRIPTION: Membership protocol run by this Node.
  * 				Definition of MP1Node class functions.
@@ -96,11 +95,6 @@ void MP1Node::nodeStart(char *servaddrstr, short servport) {
  * DESCRIPTION: Find out who I am and start up
  */
 int MP1Node::initThisNode(Address *joinaddr) {
-	/*
-	 * This function is partially implemented and may require changes
-	 */
-	int id = *(int*)(&memberNode->addr.addr);
-	int port = *(short*)(&memberNode->addr.addr[4]);
 
 	memberNode->bFailed = false;
 	memberNode->inited = true;
@@ -227,19 +221,25 @@ Address MP1Node::processJOINREQ(char* mIn){
 
 char* MP1Node::createJOINREP(size_t* msgSize){
 
+	// Allocate a message large enough for all the known nodes
+	long id, port;
 	int numNodes = memberMap.size();
 	*msgSize = sizeof(msgTypes) + sizeof(long)*2*numNodes;
-	// In the message, include list of known nodes
 	char* mOut = (char*)malloc(*msgSize);
+
+	// Set the message type
 	mOut[0]  = (char)JOINREP;
+
+	// Fill out the message with the port & ID of all known nodes
 	auto it = memberMap.begin();
 	long* nodeData  = (long*)(mOut + sizeof(msgTypes));
 	for(int c = 0 ; it != memberMap.end() ; it++){
-		size_t pos = it->first.find(":");
-		int id = stoi(it->first.substr(0, pos));
-		short port = (short)stoi(it->first.substr(pos + 1, it->first.size()-pos-1));
-		nodeData[c++] = (long)id;
-		nodeData[c++] = (long)port;
+		// Decompose address string into id and port
+		decomposeAddr(it->first, &id, &port);
+
+		// Put data into the message
+		nodeData[c++] = id;
+		nodeData[c++] = port;
 	}
 	return mOut;
 
@@ -473,17 +473,6 @@ bool MP1Node::recvCallBack(void *env, char *data, int size ) {
 
 			break;
 		}
-		case IPING:
-		{	
-			// Get the Sender and Process to send IPING to
-
-			break;
-		}
-		case IACK:
-		{
-			// Send an IPING to the pro
-			break;
-		}
 		default:
 			cout << memberNode->addr.getAddress() << ": INVALID MESSAGE" << endl;
 			break;
@@ -543,12 +532,6 @@ void MP1Node::nodeLoopOps() {
 	// Chose M random processes to send a PING
 
 	// Select a random element
-	int s = memberMap.size();
-	if( s==0){
-		cout << "size is zero.. crashing " << endl;
-	}
-
-
 	int p = rand() % memberMap.size();
 	auto it = memberMap.begin();
 	std::advance(it, p);
@@ -628,4 +611,10 @@ void MP1Node::printAddress(Address *addr)
 {
     printf("%d.%d.%d.%d:%d \n",  addr->addr[0],addr->addr[1],addr->addr[2],
                                                        addr->addr[3], *(short*)&addr->addr[4]) ;    
+}
+
+void MP1Node::decomposeAddr(string addr, long* id, long* port){
+		size_t pos = addr.find(":");
+		*id = (long)stoi(addr.substr(0, pos));
+		*port = (long)stoi(addr.substr(pos + 1, addr.size()-pos-1));
 }
