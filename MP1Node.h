@@ -152,6 +152,8 @@ private:
 	Address processJOINREQ(char* mIn);
 	void 	processJOINREP(char* mIn, int size);
 	Address processMessage(msg* mIn);
+    void	addMember(Address addr);	
+	void 	removeMember(Address addr);
 
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
@@ -173,6 +175,7 @@ public:
 	Address getJoinAddress();
 	void printAddress(Address *addr);
 	void decomposeAddr(string addr, long* id, long* port);
+	void printMemberList();
 	virtual ~MP1Node();
 };
 
